@@ -6,6 +6,8 @@ import type { ChatController } from './chat-controller';
 import { MODEL_PARAMETER_SLIDERS, sanitizeModelParameters } from '../llm/model-parameters';
 import { analyticsRows } from './dialog-analytics';
 import { lastAssistantAnswer } from './insert-answer';
+import { matchingChatCommands } from './chat-commands';
+import { isNoteCommand } from '../rag/note-service';
 
 export const CHAT_VIEW_TYPE = 'ai-advent-rag-chat';
 export interface ChatPluginApi {
@@ -21,11 +23,16 @@ export class ChatView extends ItemView {
   private liveBody?: HTMLElement;
   private messagesEl?: HTMLElement;
   private contextRemoveButton?: HTMLButtonElement;
+  private selectionCardEl?: HTMLElement;
+  private selectionLabelEl?: HTMLElement;
+  private selectionQuoteEl?: HTMLElement;
+  private selectionHintEl?: HTMLElement;
   private tabs = new Map<string, HTMLButtonElement>();
   private draggedDialogId?: string;
   private closeModelMenu?: () => void;
   private analyticsOpen = new Set<string>();
   private holdTimers = new Set<number>();
+  private readonly captureEditorSelection = (): void => this.pluginApi.chatController.captureSelection();
 
   constructor(leaf: WorkspaceLeaf, private readonly pluginApi: ChatPluginApi) { super(leaf); }
   getViewType(): string { return CHAT_VIEW_TYPE; }
@@ -34,6 +41,7 @@ export class ChatView extends ItemView {
 
   async onOpen(): Promise<void> {
     try {
+      this.containerEl.addEventListener('pointerdown', this.captureEditorSelection, true);
       await this.pluginApi.chatController.initialize();
       this.unsubscribe = this.pluginApi.chatController.subscribe((kind) => {
         if (kind === 'change') this.render();
@@ -45,7 +53,11 @@ export class ChatView extends ItemView {
       this.contentEl.createDiv({ cls: 'ai-advent-rag-error', text: error instanceof Error ? error.message : String(error) });
     }
   }
-  async onClose(): Promise<void> { this.unsubscribe?.(); this.clearModelMenu(); }
+  async onClose(): Promise<void> {
+    this.containerEl.removeEventListener('pointerdown', this.captureEditorSelection, true);
+    this.unsubscribe?.();
+    this.clearModelMenu();
+  }
   refreshMode(): void { if (this.unsubscribe) this.render(); }
 
   private action(run: () => void): void {
@@ -196,6 +208,10 @@ export class ChatView extends ItemView {
     this.activityEl = undefined;
     this.liveBody = undefined;
     this.contextRemoveButton = undefined;
+    this.selectionCardEl = undefined;
+    this.selectionLabelEl = undefined;
+    this.selectionQuoteEl = undefined;
+    this.selectionHintEl = undefined;
     if (!dialog) return;
     const runtime = controller.runtime(dialog.id);
     const busy = runtime.phase !== 'idle';
@@ -282,13 +298,63 @@ export class ChatView extends ItemView {
       this.contextRemoveButton.disabled = runtime.phase === 'running';
       this.contextRemoveButton.addEventListener('click', () => this.action(() => controller.removeContext(dialog.id)));
     }
+    const selectionCard = composer.createDiv({ cls: 'ai-advent-rag-selection-card', attr: {
+      role: 'status', 'aria-live': 'polite',
+    } });
+    this.selectionCardEl = selectionCard;
+    const selectionIcon = selectionCard.createDiv({ cls: 'ai-advent-rag-selection-icon', attr: { 'aria-hidden': 'true' } });
+    setIcon(selectionIcon, 'text-select');
+    const selectionCopy = selectionCard.createDiv({ cls: 'ai-advent-rag-selection-copy' });
+    this.selectionLabelEl = selectionCopy.createDiv({ cls: 'ai-advent-rag-selection-label' });
+    this.selectionQuoteEl = selectionCopy.createDiv({ cls: 'ai-advent-rag-selection-quote' });
+    this.selectionHintEl = selectionCopy.createDiv({ cls: 'ai-advent-rag-selection-hint' });
     const inputId = `ai-advent-rag-question-${dialog.id}`;
     const query = composer.createEl('textarea', { cls: 'ai-advent-rag-question',
       attr: { id: inputId, 'aria-label': 'Сообщение', rows: '2', maxlength: '4000' } });
     this.queryEl = query;
     query.value = controller.drafts.get(dialog.id) ?? '';
     query.disabled = busy;
-    query.addEventListener('input', () => { controller.drafts.set(dialog.id, query.value); });
+    const commandMenu = composer.createDiv({ cls: 'ai-advent-rag-command-menu', attr: {
+      id: `ai-advent-rag-commands-${dialog.id}`, role: 'listbox', 'aria-label': 'Команды чата',
+    } });
+    commandMenu.hidden = true;
+    query.setAttribute('aria-autocomplete', 'list');
+    query.setAttribute('aria-controls', commandMenu.id);
+    query.setAttribute('aria-expanded', 'false');
+    let selectedCommand = 0;
+    const updateCommands = (): void => {
+      const matches = matchingChatCommands(query.value, query.selectionStart);
+      commandMenu.empty();
+      commandMenu.hidden = matches.length === 0 || query.disabled;
+      query.setAttribute('aria-expanded', String(!commandMenu.hidden));
+      if (commandMenu.hidden) { query.removeAttribute('aria-activedescendant'); return; }
+      selectedCommand = Math.min(selectedCommand, matches.length - 1);
+      matches.forEach((command, index) => {
+        const option = commandMenu.createEl('button', { cls: 'ai-advent-rag-command-option', attr: {
+          id: `${commandMenu.id}-${index}`, type: 'button', role: 'option',
+          'aria-selected': String(index === selectedCommand),
+        } });
+        option.createSpan({ cls: 'ai-advent-rag-command-name', text: command.name });
+        option.createSpan({ cls: 'ai-advent-rag-command-description', text: command.description });
+        option.addEventListener('pointerdown', (event) => event.preventDefault());
+        option.addEventListener('click', () => chooseCommand(command.name));
+      });
+      query.setAttribute('aria-activedescendant', `${commandMenu.id}-${selectedCommand}`);
+    };
+    const chooseCommand = (name: string): void => {
+      query.value = `${name} `;
+      controller.drafts.set(dialog.id, query.value);
+      commandMenu.hidden = true;
+      query.setAttribute('aria-expanded', 'false');
+      query.removeAttribute('aria-activedescendant');
+      query.focus();
+      query.setSelectionRange(query.value.length, query.value.length);
+      this.updateSelectionPreview();
+    };
+    query.addEventListener('input', () => { controller.drafts.set(dialog.id, query.value); selectedCommand = 0; updateCommands(); this.updateSelectionPreview(); });
+    query.addEventListener('click', updateCommands);
+    query.addEventListener('focus', updateCommands);
+    query.addEventListener('blur', () => { commandMenu.hidden = true; query.setAttribute('aria-expanded', 'false'); query.removeAttribute('aria-activedescendant'); });
     const submit = (): void => {
       const value = query.value.trim();
       if (!value) return;
@@ -297,6 +363,31 @@ export class ChatView extends ItemView {
       });
     };
     query.addEventListener('keydown', (event) => {
+      if (!commandMenu.hidden) {
+        const matches = matchingChatCommands(query.value, query.selectionStart);
+        if (!matches.length) updateCommands();
+        else {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            selectedCommand = (selectedCommand + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
+            updateCommands();
+            return;
+          }
+          if ((event.key === 'Enter' && !event.shiftKey && !event.isComposing) || event.key === 'Tab') {
+            event.preventDefault();
+            const selected = matches[selectedCommand];
+            if (selected) chooseCommand(selected.name);
+            return;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            commandMenu.hidden = true;
+            query.setAttribute('aria-expanded', 'false');
+            query.removeAttribute('aria-activedescendant');
+            return;
+          }
+        }
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         submit();
@@ -329,9 +420,11 @@ export class ChatView extends ItemView {
       updateAnalytics();
     });
     updateAnalytics();
+    this.updateSelectionPreview();
     this.refreshTabs();
     messages.scrollTop = messages.scrollHeight;
     if (restoreFocus && !busy) { query.focus(); query.setSelectionRange(selection, selection); }
+    if (restoreFocus && !busy) updateCommands();
   }
 
   private refreshProgress(): void {
@@ -343,7 +436,26 @@ export class ChatView extends ItemView {
     this.contextRemoveButton && (this.contextRemoveButton.disabled = runtime.phase === 'running');
     this.activityEl?.setText(runtime.status);
     this.liveBody?.setText(runtime.text);
+    this.updateSelectionPreview();
     if (this.messagesEl && runtime.phase === 'running') this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  private updateSelectionPreview(): void {
+    const card = this.selectionCardEl;
+    const label = this.selectionLabelEl;
+    const quote = this.selectionQuoteEl;
+    const hint = this.selectionHintEl;
+    if (!card || !label || !quote || !hint) return;
+    const selection = this.pluginApi.chatController.selectionPreview;
+    card.hidden = !selection;
+    if (!selection) return;
+    label.setText(`Выделено в «${selection.title}»`);
+    const compact = selection.content.replace(/\s+/gu, ' ').trim();
+    quote.setText(`«${compact.slice(0, 120)}${compact.length > 120 ? '…' : ''}»`);
+    quote.setAttribute('title', selection.path);
+    hint.setText(isNoteCommand(this.queryEl?.value ?? '')
+      ? 'После отправки /note создам заметку в корне хранилища и заменю выделение ссылкой.'
+      : 'Отправьте /note, чтобы создать заметку в корне хранилища по выделению.');
   }
 
   private renderEntries(container: HTMLElement): void {

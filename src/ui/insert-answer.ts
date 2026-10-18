@@ -4,7 +4,7 @@ import type { ChatEntry } from './chat-state';
 export function lastAssistantAnswer(entries: readonly ChatEntry[]): string | undefined {
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index]!;
-    if (entry.role === 'assistant' && entry.content.trim()) return entry.content;
+    if (entry.role === 'assistant' && entry.content.trim()) return entry.fileEdited ? undefined : entry.content;
   }
   return undefined;
 }

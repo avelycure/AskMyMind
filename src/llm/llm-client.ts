@@ -18,10 +18,12 @@ interface OllamaChatResponse {
 }
 
 interface ChatCompletionResponse {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
 }
 
 interface OpenAiResponsesResponse {
+  status?: string;
+  incomplete_details?: { reason?: string };
   output_text?: string;
   output?: Array<{
     content?: Array<{ type?: string; text?: string }>;
@@ -76,7 +78,7 @@ export class ConfigurableLlmClient implements LlmClient {
           const data = JSON.parse(line) as OllamaChatResponse & { error?: string; done?: boolean };
           if (data.error) throw new Error(data.error);
           if (config.requireComplete && data.done_reason === 'length') {
-            throw new Error('Ответ достиг лимита длины. Форматирование не завершено; разделите страницу на части.');
+            throw new Error('Ответ достиг лимита длины. Заметка не изменена; увеличьте длину ответа или сократите входной текст.');
           }
           const delta = data.message?.content ?? '';
           answer += delta;
@@ -112,7 +114,7 @@ export class ConfigurableLlmClient implements LlmClient {
       });
       const content = response.data.message?.content?.trim();
       if (config.requireComplete && response.data.done_reason === 'length') {
-        throw new Error('Ответ достиг лимита длины. Форматирование не завершено; разделите страницу на части.');
+        throw new Error('Ответ достиг лимита длины. Заметка не изменена; увеличьте длину ответа или сократите входной текст.');
       }
       if (!content) throw new Error('The selected Ollama model returned an empty answer.');
       await report(response.data);
@@ -130,11 +132,14 @@ export class ConfigurableLlmClient implements LlmClient {
             ...message,
             role: message.role === 'system' ? 'developer' : message.role,
           })),
-          max_output_tokens: 1200,
+          max_output_tokens: config.options?.num_predict ?? 1200,
           reasoning: { effort: 'none' },
-          text: { verbosity: 'low' },
+          text: { verbosity: config.responseVerbosity ?? 'low' },
         },
       });
+      if (config.requireComplete && response.data.status === 'incomplete') {
+        throw new Error(`Ответ модели не завершён (${response.data.incomplete_details?.reason ?? 'неизвестная причина'}). Заметка не изменена.`);
+      }
       const content = extractOpenAiResponseText(response.data);
       if (!content) throw new Error('The selected OpenAI model returned an empty answer.');
       return content;
@@ -148,11 +153,14 @@ export class ConfigurableLlmClient implements LlmClient {
         model: config.model,
         messages,
         stream: false,
-        max_tokens: 1200,
+        max_tokens: config.options?.num_predict ?? 1200,
         temperature: config.provider === 'glm' || config.provider === 'deepseek' ? 0.2 : undefined,
         thinking: config.provider === 'deepseek' ? { type: 'disabled' } : undefined,
       },
     });
+    if (config.requireComplete && response.data.choices?.[0]?.finish_reason === 'length') {
+      throw new Error('Ответ достиг лимита длины. Заметка не изменена; увеличьте длину ответа.');
+    }
     const content = response.data.choices?.[0]?.message?.content?.trim();
     if (!content) throw new Error('The selected model returned an empty answer.');
     return content;

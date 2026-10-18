@@ -16,6 +16,7 @@ export const MAX_DIALOGS = 10;
 export type ChatMode = 'direct' | 'rag-basic' | 'rag-enhanced';
 
 export interface ChatEntry extends ChatTurn {
+  fileEdited?: boolean;
   analytics?: DialogAnalytics;
   sources?: SearchResult[];
   citations?: GroundedCitation[];
@@ -103,6 +104,7 @@ function validContextPath(value: unknown): string | null {
 
 function compactEntry(entry: ChatEntry): ChatEntry {
   return {
+    fileEdited: entry.fileEdited,
     analytics: entry.analytics,
     role: entry.role,
     content: entry.content,
@@ -144,6 +146,7 @@ function sanitizeEntries(value: unknown): ChatEntry[] {
     if (!role || !content) continue;
     entries.push({
       role,
+      fileEdited: booleanOrUndefined(record.fileEdited),
       analytics: sanitizeAnalytics(record.analytics),
       content,
       usedRag: booleanOrUndefined(record.usedRag),

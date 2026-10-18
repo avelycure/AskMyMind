@@ -128,6 +128,19 @@ describe('model clients', () => {
     });
   });
 
+  it('honors a longer complete cloud response and rejects truncation', async () => {
+    const transport = new FakeTransport({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: 'часть' });
+    const client = new ConfigurableLlmClient(transport);
+    await expect(client.generate([], { provider: 'openai', baseUrl: 'https://api.openai.com/v1',
+      model: 'test-model', apiKey: 'secret', requireComplete: true, responseVerbosity: 'medium',
+      options: { num_predict: 4096 } })).rejects.toThrow(/не завершён/);
+    expect(transport.requests[0]?.body).toMatchObject({ max_output_tokens: 4096, text: { verbosity: 'medium' } });
+    const completion = new FakeTransport({ choices: [{ message: { content: 'часть' }, finish_reason: 'length' }] });
+    await expect(new ConfigurableLlmClient(completion).generate([], { provider: 'custom', baseUrl: 'https://example.com',
+      model: 'test-model', requireComplete: true, options: { num_predict: 4096 } })).rejects.toThrow(/лимита/);
+    expect(completion.requests[0]?.body).toMatchObject({ max_tokens: 4096 });
+  });
+
   it('rejects arbitrary endpoints before sending the OpenAI key', async () => {
     const transport = new FakeTransport({});
     const client = new ConfigurableLlmClient(transport);

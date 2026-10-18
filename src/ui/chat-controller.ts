@@ -9,6 +9,8 @@ export interface ChatStore {
 }
 export interface ChatControllerApi {
   activeSelection?(): ActiveNoteContext | undefined;
+  onSelectionCaptured?(selection: ActiveNoteContext): void;
+  onSelectionReleased?(): void;
   activeNotePath(): string | null;
   readNote(path: string): Promise<ActiveNoteContext>;
   answer(question: string, history: readonly ChatTurn[], context: ActiveNoteContext | undefined,
@@ -33,8 +35,15 @@ export class ChatController {
   private initialization?: Promise<void>;
   private disposed = false;
   private cancellations = new Map<string, AbortController>();
+  private pendingSelection?: ActiveNoteContext;
 
-  dispose(): void { this.disposed = true; this.listeners.clear(); }
+  dispose(): void {
+    this.disposed = true;
+    this.pendingSelection = undefined;
+    this.api.onSelectionReleased?.();
+    for (const cancellation of this.cancellations.values()) cancellation.abort();
+    this.listeners.clear();
+  }
 
   constructor(private readonly store: ChatStore, private readonly queue: ModelTaskQueue,
     private readonly api: ChatControllerApi) {
@@ -63,6 +72,16 @@ export class ChatController {
   get activeDialog(): ChatDialog | undefined { return this.state.dialogs.find((d) => d.id === this.state.activeDialogId); }
   get queueSummary(): string {
     return `Модель: ${this.queue.isRunning ? 'занята' : 'свободна'} · в очереди: ${this.queue.pendingCount}`;
+  }
+  get selectionPreview(): ActiveNoteContext | undefined { return this.pendingSelection; }
+
+  /** Save the editor selection before focusing the chat clears it. */
+  captureSelection(): void {
+    const selected = this.api.activeSelection?.();
+    if (!selected) return;
+    this.pendingSelection = { ...selected };
+    this.api.onSelectionCaptured?.(this.pendingSelection);
+    this.emit('progress');
   }
 
   createDialog(): ChatDialog {
@@ -135,11 +154,13 @@ export class ChatController {
     this.requireIdle(id);
     const dialog = this.requireDialog(id);
     const cancellation = new AbortController();
-    const selected = this.api.activeSelection?.();
+    const selected = this.api.activeSelection?.() ?? this.pendingSelection;
     const selection = selected ? { ...selected } : undefined;
     if (selection && selection.content.length > MAX_ACTIVE_NOTE_CHARACTERS) {
       throw new Error('Выделенный текст длиннее 12 000 символов. Выделите меньший фрагмент, чтобы не обрезать его.');
     }
+    this.pendingSelection = undefined;
+    this.emit('progress');
     const parameters = sanitizeModelParameters(dialog.modelParameters);
     this.cancellations.set(id, cancellation);
     const history = dialog.entries.map(({ role, content }) => ({ role, content }));
@@ -171,9 +192,10 @@ export class ChatController {
       }, cancellation.signal);
       if (this.disposed || cancellation.signal.aborted) return;
       dialog.entries.push({ role: 'assistant', content: answer.text,
+        fileEdited: answer.fileEdited,
         analytics: answer.analytics ? { ...answer.analytics, queueMs } : undefined, sources: answer.sources,
         citations: answer.citations, groundingStatus: answer.groundingStatus, usedRag: answer.usedRag,
-        usedRetrievalEnhancements: answer.usedRetrievalEnhancements, modelCalled: true, retrieval: answer.retrieval });
+        usedRetrievalEnhancements: answer.usedRetrievalEnhancements, modelCalled: answer.modelCalled, retrieval: answer.retrieval });
       runtime.status = 'Ответ получен.';
     } catch (error) {
       if (this.disposed || cancellation.signal.aborted) return;
@@ -183,6 +205,7 @@ export class ChatController {
       if (index >= 0) dialog.entries.splice(index, 1);
       this.drafts.set(id, value);
     } finally {
+      this.api.onSelectionReleased?.();
       runtime.phase = 'idle';
       runtime.text = '';
       this.cancellations.delete(id);

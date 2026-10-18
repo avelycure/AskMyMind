@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChatController, type ChatControllerApi } from '../src/ui/chat-controller';
 import { ModelTaskQueue } from '../src/llm/model-task-queue';
 import { compactChatState, emptyChatState, type ChatState } from '../src/ui/chat-state';
-import type { RagAnswer } from '../src/types';
+import type { ActiveNoteContext, RagAnswer } from '../src/types';
 
 const answer = (text: string): RagAnswer => ({ text, sources: [], citations: [], groundingStatus: 'not-applicable',
   usedRag: true, usedRetrievalEnhancements: true, modelCalled: true });
@@ -121,6 +121,35 @@ describe('independent queued dialogs', () => {
     await request;
     expect(received).toEqual([{ ...selected, content: 'Original selected text' }]);
     expect(readNote).not.toHaveBeenCalled();
+  });
+  it('keeps the editor selection when focusing the chat clears it before /note is sent', async () => {
+    let selected: ActiveNoteContext | undefined = {
+      path: 'Source.md', title: 'Source', content: 'Выделенный термин', mtime: 1,
+      isSelection: true, selectionStart: 0, selectionEnd: 17, sourceContent: 'Выделенный термин',
+    };
+    const received: unknown[] = [];
+    const onSelectionCaptured = vi.fn();
+    const onSelectionReleased = vi.fn();
+    const { controller, readNote } = setup({ activeSelection: () => selected,
+      onSelectionCaptured, onSelectionReleased, answer: async (_question, _history, context) => {
+      received.push(context);
+      return answer('Готово');
+    } });
+    await controller.initialize();
+    controller.captureSelection(); // pointerdown on the chat, before editor blur
+    expect(controller.selectionPreview?.content).toBe('Выделенный термин');
+    expect(onSelectionCaptured).toHaveBeenCalledOnce();
+    selected = undefined;
+    await controller.send(controller.activeDialog!.id, '/note');
+    expect(controller.selectionPreview).toBeUndefined();
+    expect(onSelectionReleased).toHaveBeenCalledOnce();
+    expect(received).toEqual([{
+      path: 'Source.md', title: 'Source', content: 'Выделенный термин', mtime: 1,
+      isSelection: true, selectionStart: 0, selectionEnd: 17, sourceContent: 'Выделенный термин',
+    }]);
+    expect(readNote).not.toHaveBeenCalled();
+    await controller.send(controller.activeDialog!.id, '/note');
+    expect(readNote).toHaveBeenCalledWith('First.md');
   });
   it('rejects oversized selection before queuing or changing history', async () => {
     const { controller, queue } = setup({ activeSelection: () => ({ path: 'Note.md', title: 'Note', content: 'x'.repeat(12001), mtime: 1, isSelection: true }) });
