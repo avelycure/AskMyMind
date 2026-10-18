@@ -1,9 +1,9 @@
 {
   "id": "ai-advent-rag",
-  "name": "AI Advent RAG",
+  "name": "AskMyMind",
   "version": "0.5.0",
   "minAppVersion": "1.11.4",
-  "description": "Local Qwen RAG chat with up to ten independent dialogs, active note context, and a shared model task queue.",
+  "description": "Local RAG chat and semantic search for your Obsidian vault.",
   "author": "avelycure",
   "isDesktopOnly": true
 }

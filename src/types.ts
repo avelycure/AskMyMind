@@ -128,6 +128,7 @@ export interface DialogAnalytics {
 export interface LlmConfig {
   onMetrics?: (metrics: ModelMetrics) => void;
   requireComplete?: boolean;
+  responseVerbosity?: 'low' | 'medium' | 'high';
   options?: { temperature?: number; repeat_penalty?: number; num_predict?: number; num_ctx?: number };
   signal?: AbortSignal;
   provider: LlmProviderId;
@@ -167,6 +168,9 @@ export interface VectorSearchHit {
 export interface ActiveNoteContext {
   isSelection?: boolean;
   lineStart?: number;
+  selectionStart?: number;
+  selectionEnd?: number;
+  sourceContent?: string;
   path: string;
   title: string;
   content: string;
@@ -185,6 +189,7 @@ export interface RagAnswer {
   usedRag: boolean;
   usedRetrievalEnhancements: boolean;
   modelCalled: boolean;
+  fileEdited?: boolean;
   retrieval?: RetrievalDiagnostics;
 }
 

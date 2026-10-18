@@ -15,7 +15,8 @@ function model() {
 describe('vault formatting skill', () => {
   it('recognizes slash commands and explicit requests to apply fmt', () => {
     expect(isFormatCommand('/fmt')).toBe(true);
-    expect(isFormatCommand(' /format сохрани заголовки')).toBe(true);
+    expect(isFormatCommand(' /fmt сохрани заголовки')).toBe(true);
+    expect(isFormatCommand('/format сохрани заголовки')).toBe(false);
     expect(isFormatCommand('/fmtx')).toBe(false);
     expect(isFormatCommand('Расскажи про fmt')).toBe(false);
     expect(isFormatCommand('Отформатируй заметку скиллом fmt')).toBe(true);

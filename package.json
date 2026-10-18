@@ -1,5 +1,5 @@
 {
-  "name": "ai-advent-rag",
+  "name": "askmymind",
   "version": "0.5.0",
   "description": "Local document indexing and semantic retrieval for Obsidian",
   "main": "main.js",
@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/ai-review.node-test.mjs",
     "test:watch": "vitest",
     "eval:day22": "node scripts/run-day22-eval.mjs",
     "eval:day23": "node scripts/run-day23-eval.mjs",
@@ -31,7 +31,7 @@
     "@eslint/json": "^0.14.0",
     "@types/node": "^22.15.17",
     "@types/sql.js": "^1.4.9",
-    "esbuild": "^0.25.5",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.4",
     "eslint-plugin-obsidianmd": "^0.4.2",
     "globals": "^17.6.0",

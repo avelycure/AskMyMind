@@ -7,6 +7,7 @@ const context = await esbuild.context({
   banner: { js: '/* Generated file. Source: https://github.com/avelycure/AI-Advent-RAG */' },
   entryPoints: ['src/main.ts'],
   bundle: true,
+  loader: { '.md': 'text' },
   external: [
     'obsidian',
     'electron',

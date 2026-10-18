@@ -11,6 +11,13 @@ describe('insert the latest completed answer', () => {
     ])).toBe('## Result\nFull text.');
     expect(lastAssistantAnswer([{ role: 'user', content: 'Question' }])).toBeUndefined();
   });
+  it('does not offer to insert a /fmt completion message into a note', () => {
+    expect(lastAssistantAnswer([
+      { role: 'assistant', content: 'Earlier answer' },
+      { role: 'user', content: '/fmt' },
+      { role: 'assistant', content: 'Заметка обновлена.', fileEdited: true },
+    ])).toBeUndefined();
+  });
   it('inserts the complete Markdown through the editor and focuses the note', () => {
     const editor = { replaceSelection: vi.fn(), focus: vi.fn() };
     const text = '## Результат\nТекст\n- [ ] Задача\n[[Ссылка]]';
