@@ -98,12 +98,12 @@ export default class AiAdventRagPlugin extends Plugin {
     try { await this.chatController.initialize(false); }
     catch (error) { new Notice(error instanceof Error ? error.message : String(error)); }
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this));
-    this.addRibbonIcon('sparkles', 'Открыть чат с локальной Qwen', () => {
+    this.addRibbonIcon('sparkles', 'Открыть AskMyMind', () => {
       void this.activateChatView();
     });
     this.addCommand({
       id: 'open-question-panel',
-      name: 'Открыть чат с локальной Qwen',
+      name: 'Открыть чат',
       callback: () => void this.activateChatView(),
     });
     this.addCommand({
@@ -333,7 +333,7 @@ export default class AiAdventRagPlugin extends Plugin {
   private async activateChatView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0];
     const leaf = existing ?? this.app.workspace.getRightLeaf(false);
-    if (!leaf) throw new Error('Could not open the AI Advent RAG panel.');
+    if (!leaf) throw new Error('Could not open the AskMyMind panel.');
     if (!existing) await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
     await this.app.workspace.revealLeaf(leaf);
   }
@@ -345,7 +345,7 @@ export default class AiAdventRagPlugin extends Plugin {
   private pluginDirectoryPath(): string {
     const adapter = this.app.vault.adapter;
     if (!(adapter instanceof FileSystemAdapter)) {
-      throw new Error('AI Advent RAG requires the Obsidian desktop file-system adapter.');
+      throw new Error('AskMyMind requires the Obsidian desktop file-system adapter.');
     }
     return join(adapter.getBasePath(), this.app.vault.configDir, 'plugins', this.manifest.id);
   }
@@ -402,7 +402,7 @@ export default class AiAdventRagPlugin extends Plugin {
       selectedFolders: [...this.settings.selectedFolders],
     };
     try {
-      new Notice('AI Advent RAG обновляет еженедельный локальный индекс.');
+      new Notice('AskMyMind обновляет еженедельный локальный индекс.');
       const targetRepository = createIndexRepository(
         this.indexDirectoryPath(),
         settingsAtStart.indexStorageFormat,

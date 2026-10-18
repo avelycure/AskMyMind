@@ -1,0 +1,52 @@
+name: AI PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check reviewer on base branch
+        id: reviewer
+        run: |
+          if test -f scripts/ai-review.mjs; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'AI-ревью начнёт работать после попадания скрипта в базовую ветку.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fetch PR commit as data
+        if: steps.reviewer.outputs.available == 'true'
+        run: git fetch --no-tags --depth=1 origin "$PR_HEAD_SHA"
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Review changes
+        if: steps.reviewer.outputs.available == 'true'
+        run: node scripts/ai-review.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          AI_REVIEW_BASE_URL: ${{ vars.AI_REVIEW_BASE_URL }}
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}

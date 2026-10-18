@@ -50,6 +50,7 @@ export default defineConfig(
       // Standalone Node.js tools do not run inside Obsidian's renderer process.
       'no-restricted-globals': 'off',
       'obsidianmd/hardcoded-config-path': 'off',
+      'obsidianmd/no-global-this': 'off',
     },
   },
 );

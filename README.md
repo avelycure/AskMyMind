@@ -1,4 +1,6 @@
-# AI Advent RAG
+# AskMyMind
+
+[AI-ревью pull request](docs/ai-pr-review.md) ищет контекст в документации и коде проекта и публикует замечания в PR после настройки ключа модели в GitHub Actions.
 
 Desktop-only Obsidian plugin for local semantic search and RAG chat over a vault.
 
@@ -17,15 +19,15 @@ npm install
 npm run dev
 ```
 
-Copy the built `main.js`, `manifest.json`, and `styles.css` into `<vault>/.obsidian/plugins/ai-advent-rag`, then enable **AI Advent RAG** in Community plugins.
+Copy the built `main.js`, `manifest.json`, and `styles.css` into `<vault>/.obsidian/plugins/ai-advent-rag`, then enable **AskMyMind** in Community plugins. The plugin ID and directory name remain `ai-advent-rag` so existing settings, indexes and Invest Manager integration keep working.
 
 ## Usage — Day 27
 
 1. Start Ollama on `http://127.0.0.1:11434`.
-2. Open **Settings → AI Advent RAG**. The default chat model is the locally installed `qwen3.8:27b`; you can enter another installed chat model name.
+2. Open **Settings → AskMyMind**. The default chat model is the locally installed `qwen3.8:27b`; you can enter another installed chat model name.
 3. Select **Проверить подключение** to test both model availability and an actual response. A cold model start can take a few minutes.
 4. Choose folders and rebuild the local index if necessary. Embeddings use `qwen3-embedding:0.6b` independently of the chat model.
-5. Open **Чат с локальной Qwen** using the ribbon or command palette and send a question.
+5. Open **AskMyMind** using the ribbon or command palette and send a question.
 6. Regular questions use RAG: query rewriting and filtering run before streaming the answer with links to retrieved notes. The old direct and basic RAG switches have been removed. `/fmt` uses the selected page directly, as described below.
 
 ## Formatting with /fmt
